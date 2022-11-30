@@ -1,0 +1,220 @@
+# Portfolio Creator allows a User to create a portfolio based on a specific set of stocks. 
+# The user is asked to input what stocks they want in their portfolio, 
+# whether they want to control for return, risk, or automate the process (maximise sortino ratio)
+# The program scrapes the updated stock data, and the updated risk-free rate
+# The program outputs a contructed portfolio, and its annual expected return, annual expected volatility, and annual expected sortino ratio.
+# The user is then asked to input a path where they would like the excel output saved. 
+
+import pandas as pd
+import yfinance as yf
+from pypfopt import get_latest_prices, DiscreteAllocation,expected_returns,risk_models, EfficientSemivariance
+from fake_useragent import FakeUserAgent
+import requests
+import numpy as np
+
+#Taking stock inputs:
+stocks = input("Type Stocks Here: ")
+capit = stocks.upper()
+tickers = capit.split()
+period = '2y'
+interval = '1d'
+tpv = input("Input Total Portfolio Value: ")
+tpv = float(tpv)
+
+#Getting Returns for each ticker:
+close = dict()
+for t in tickers:
+    try:
+        refer = yf.download(t,period=period,interval=interval)
+        close[t] = refer['Close']
+    except:
+        continue
+
+close1 = pd.DataFrame.from_dict(close,orient='index')
+close1 = close1.dropna(axis=0)
+close1 = close1.transpose()
+
+#Scraping Risk Free Rate:
+url = 'https://ycharts.com/indicators/1_year_treasury_rate'
+user = FakeUserAgent()
+rand = user.chrome
+r=requests.get(url,headers={'User-Agent':rand})
+table=pd.read_html(r.text)
+rf=table[3][1][0]
+rf=float(rf[:-1])
+rf=rf/100
+
+#User Preference:
+command1 = input("Type 'R' to set specific return, 'S' to set specific risk, or type 'A' to automate: ")
+command1 = command1.upper()
+
+#If User chooses to control for RETURN:
+if command1 == 'R':
+    while True:
+        # Expected Return from User:
+        target = input("Enter Expected Portfolio Return: ")
+        if target == "done":
+            break
+        try:
+            target = float(target)
+        except:
+            print(" ")
+            print("[Please enter only numbers for Portfolio Return]")
+            continue
+
+        # Calculating Risk and Return
+        R = expected_returns.mean_historical_return(close1)
+        S = risk_models.sample_cov(close1)
+        HR = expected_returns.returns_from_prices(close1)
+
+        # Creating Portfolio Skeleton:
+        try:
+            es = EfficientSemivariance(R, HR)
+            es.efficient_return(target)
+            weights = es.clean_weights()
+        except:
+            print(" ")
+            print("[Please try another return. The problem might be that your return is unrealistic]")
+            continue
+
+        # Get Latest Prices:
+        lp = get_latest_prices(close1)
+
+        # Create Allocation:
+        da = DiscreteAllocation(weights, lp, tpv)
+        allocation, leftover = da.greedy_portfolio()
+        es.portfolio_performance(verbose=True,risk_free_rate=rf)
+
+        # Convert to DFs
+        w_df = pd.DataFrame.from_dict(allocation, orient='index', columns=['Number Of Stocks'])
+        w_df['Weight'] = weights
+        w_df['Returns'] = R
+        w_df['Price'] = lp
+        print(" ")
+        print(w_df)
+        print(" ")
+        print("Leftover Funds: ", leftover)
+
+        # To Excel:
+        system_where = input("Enter Pathway to desktop/folder: ")
+        system_where = system_where.strip()
+        path = system_where + '/Portfolio_Structure(Return).xlsx'
+        with pd.ExcelWriter(path) as writer:
+            w_df.to_excel(writer, sheet_name="Portfolio Structure")
+
+
+
+
+#If user chooses to control for risk:
+elif command1 == "S":
+    while True:
+        #Expected Risk from User:
+        target = input("Enter Expected Portfolio Risk: ")
+        if target == "done":
+            break
+        try:
+            target = float(target)
+        except:
+            print(" ")
+            print("[Please enter only numbers for Portfolio Risk]")
+            continue
+
+        # Calculating Risk and Return
+        R = expected_returns.mean_historical_return(close1)
+        S = risk_models.sample_cov(close1)
+        HR = expected_returns.returns_from_prices(close1)
+
+        # Creating Portfolio Skeleton:
+        try:
+            es = EfficientSemivariance(R, HR)
+            es.efficient_risk(target)
+            weights = es.clean_weights()
+        except:
+            print(" ")
+            print("[Please try another risk-amount. The problem might be that your risk-amount is unrealistic]")
+            continue
+
+        # Get Latest Prices:
+        lp = get_latest_prices(close1)
+
+        # Create Allocation:
+        da = DiscreteAllocation(weights, lp, tpv)
+        allocation, leftover = da.greedy_portfolio()
+        es.portfolio_performance(verbose=True,risk_free_rate=rf)
+
+
+        # Convert to DFs
+        w_df = pd.DataFrame.from_dict(allocation, orient='index', columns=['Number Of Stocks'])
+        w_df['Weight'] = weights
+        w_df['Returns'] = R
+        w_df['Price'] = lp
+        print(" ")
+        print(w_df)
+        print(" ")
+        print("Leftover Funds: ", leftover)
+
+        # To Excel:
+        system_where = input("Enter Pathway to desktop/folder: ")
+        system_where = system_where.strip()
+        path = system_where + '/Portfolio_Structure(Risk).xlsx'
+        with pd.ExcelWriter(path) as writer:
+            w_df.to_excel(writer, sheet_name="Portfolio Structure")
+
+
+
+# If User chooses to Automate:
+elif command1 == 'A':
+    ra = np.arange(0.1, 1, 0.025)
+
+    # Calculating Risk and Return
+    R = expected_returns.mean_historical_return(close1)
+    S = risk_models.sample_cov(close1)
+    HR = expected_returns.returns_from_prices(close1)
+
+    # Portfolio Skeleton:
+    es = EfficientSemivariance(R, HR)
+
+    #Finding Return Value for Portfolio with Highest Sortino Value:
+    best = 0
+    val = 0
+    for r in ra:
+        try:
+            target = r
+            es.efficient_return(target)
+            weights = es.clean_weights()
+            perf = es.portfolio_performance(risk_free_rate=rf)
+            sortino = perf[2]
+            if sortino > best:
+                best = sortino
+                val = r
+        except:
+            continue
+
+#Using best value to create portfolio:
+    es.efficient_return(val)
+    weights = es.clean_weights()
+    es.portfolio_performance(verbose=True,risk_free_rate=rf)
+
+    #Get Latest Price:
+    lp = get_latest_prices(close1)
+
+    # Create Allocation:
+    da = DiscreteAllocation(weights,lp,tpv)
+    allocation, leftover = da.greedy_portfolio()
+
+    # Convert to DFs
+    w_df = pd.DataFrame.from_dict(allocation, orient='index', columns=['Number Of Stocks'])
+    w_df['Weight'] = weights
+    w_df['Returns'] = R
+    w_df['Price'] = lp
+    print(" ")
+    print(w_df)
+    print(" ")
+    print("Leftover Funds: ", leftover)
+
+    # To Excel:
+    system_where = input("Enter Pathway to desktop/folder: ")
+    system_where = system_where.strip()
+    path = system_where+'/Portfolio_Structure(Auto).xlsx'
+    with pd.ExcelWriter(path) as writer:
+        w_df.to_excel(writer, sheet_name="Portfolio Structure")
