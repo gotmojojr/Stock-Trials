@@ -1,0 +1,220 @@
+# Screener the Second is a program that screens an index, and outputs tickers that meet a certain criteria.
+# Screener the Second is a prototype model, that is a part of a series called "Screeners".
+# This program scrapes the tickers in the S&P500 and the S&P600 and then runs them through a screener and outputs tickers that meet a certain criteria.
+# This particular screener outputs tickers that have yielded positive return more than half the time, in the last 2 years.
+# Those stocks are screened to see which stocks have yielded a negative daily return more than half the time, in the last month.
+# Finally those stocks are screened to see which stocks have yielded a positive daily return more than half the time, in the last 3 days.
+
+# The logic of this screener to is to screen the S&P500 and S&P600 for stocks that have had a long term positive trend, are undervalued in the last month,
+# but are showing growth in the last 3 days. 
+# This way the screener usually outputs promising stocks that are recently undervalued.
+
+# This screener cannot be used on its own. It must be coupled with 'Skynet' and Portfolio-Creator' for the best results.
+
+import pandas as pd
+import yfinance as yf
+from yahoofinancials import YahooFinancials as YF
+import numpy as np
+import requests
+
+period1 = '2y'
+period2 = '1mo'
+period3 = '3d'
+day= '1d'
+minute = '1m'
+
+
+#Getting SPY500 & 600 Tickers:
+url500 = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+table500 = pd.read_html(url500)
+symb500 = table500[0]['Symbol']
+spy500 = list()
+for i in symb500:
+    spy500.append(i)
+
+url600 = 'https://en.wikipedia.org/wiki/List_of_S%26P_600_companies'
+table600 = pd.read_html(url600)
+symb600 = table600[1]['Symbol']
+spy600 = list()
+for i in symb600:
+    spy600.append(i)
+
+#Industry Data:
+Industries = ['Utilities',
+              'Industrials',
+              'Healthcare',
+              'Technology',
+              'Communication Services',
+              'Consumer Cyclical',
+              'Consumer Defensive',
+              'Energy',
+              'Financial Services',
+              'Basic Materials',
+              'Real Estate']
+ETFS = {'Utilities': 'IDU',
+        'Industrials': 'IYJ',
+        'Healthcare': 'IYH',
+        'Technology': 'IYW',
+        'Communication Services': 'IYZ',
+        'Consumer Cyclical': 'IYC',
+        'Consumer Defensive': 'IYK',
+        'Energy': 'IYE',
+        'Financial Services': 'IYF',
+        'Basic Materials': 'IYM',
+        'Real Estate': 'IYR'}
+
+#Asking for User Input:
+command1 = input("Large Cap (L), Small Cap (S), or Both (B): ")
+command1 = command1.upper()
+
+#If Input is Large Cap:
+if command1 == 'L':
+    screen1 = " "
+    refer = symb500
+    k = 1
+    for t in refer:
+        try:
+            y1 = yf.download(t, period=period1, interval=day)
+            y1['Returns'] = (y1['Close'] - y1['Open']) / y1['Open']
+            y1['Returns'] = y1['Returns'].fillna(0)
+            count_up1 = 0
+            for r1 in y1['Returns']:
+                if r1 > 0:
+                    count_up1 = count_up1 + 1
+            freq1 = count_up1 / len(y1['Returns'])
+            print(k)
+            k = k + 1
+
+            if freq1 > 0.5:
+                y2 = yf.download(t, period=period2, interval=day)
+                y2['Returns'] = (y2['Close']-y2['Open'])/y2['Open']
+                y2["Returns"] = y2['Returns'].fillna(0)
+                count_down1 = 0
+                for r2 in y2['Returns']:
+                    if r2 < 0:
+                        count_down1 = count_down1 + 1
+                freq2 = count_down1 / len(y2['Returns'])
+
+            if freq2 > 0.5:
+                y3 = yf.download(t,period=period3,interval=minute)
+                y3['Returns'] = (y3['Close']-y3['Open'])/y3['Open']
+                y3["Returns"] = y3['Returns'].fillna(0)
+                count_up2 = 0
+                for r3 in y3['Returns']:
+                    if r3 > 0:
+                        count_up2 = count_up2+1
+                freq3 = count_up2/len(y3['Returns'])
+
+            if freq3 > 0.5:
+                screen1 = screen1 + " " + t
+
+        except:
+            continue
+try:
+    screen1 = screen1[1:]
+except:
+    pass
+
+
+
+#If input is Small Cap:
+if command1 == 'S':
+    screen1 = " "
+    refer = symb600
+    k=1
+    for t in refer:
+        try:
+            y1 = yf.download(t, period=period1, interval=day)
+            y1['Returns'] = (y1['Close'] - y1['Open']) / y1['Open']
+            y1['Returns'] = y1['Returns'].fillna(0)
+            count_up1 = 0
+            for r1 in y1['Returns']:
+                if r1 > 0:
+                    count_up1 = count_up1 + 1
+            freq1 = count_up1 / len(y1['Returns'])
+            print(k)
+            k=k+1
+
+            if freq1 > 0.5:
+                y2 = yf.download(t, period=period2, interval=day)
+                y2['Returns'] = (y2['Close'] - y2['Open']) / y2['Open']
+                y2["Returns"] = y2['Returns'].fillna(0)
+                count_down1 = 0
+                for r2 in y2['Returns']:
+                    if r2 < 0:
+                        count_down1 = count_down1 + 1
+                freq2 = count_down1 / len(y2['Returns'])
+
+            if freq2 > 0.5:
+                y3 = yf.download(t, period=period3, interval=minute)
+                y3['Returns'] = (y3['Close'] - y3['Open']) / y3['Open']
+                y3["Returns"] = y3['Returns'].fillna(0)
+                count_up2 = 0
+                for r3 in y3['Returns']:
+                    if r3 > 0:
+                        count_up2 = count_up2 + 1
+                freq3 = count_up2 / len(y3['Returns'])
+
+            if freq3 > 0.5:
+                screen1 = screen1 + " " + t
+
+        except:
+            continue
+try:
+    screen1 = screen1[1:]
+except:
+    pass
+
+#If input is both:
+if command1 == 'B':
+    screen1 = " "
+    both_list = list()
+    both_list.extend(spy500)
+    both_list.extend(spy600)
+    refer = both_list
+    k = 1
+    for t in refer:
+        try:
+            y1 = yf.download(t, period=period1, interval=day)
+            y1['Returns'] = (y1['Close'] - y1['Open']) / y1['Open']
+            y1['Returns'] = y1['Returns'].fillna(0)
+            count_up1 = 0
+            for r1 in y1['Returns']:
+                if r1 > 0:
+                    count_up1 = count_up1 + 1
+            freq1 = count_up1 / len(y1['Returns'])
+            print(k)
+            k = k + 1
+
+            if freq1 > 0.5:
+                y2 = yf.download(t, period=period2, interval=day)
+                y2['Returns'] = (y2['Close'] - y2['Open']) / y2['Open']
+                y2["Returns"] = y2['Returns'].fillna(0)
+                count_down1 = 0
+                for r2 in y2['Returns']:
+                    if r2 < 0:
+                        count_down1 = count_down1 + 1
+                freq2 = count_down1 / len(y2['Returns'])
+
+            if freq2 > 0.5:
+                y3 = yf.download(t, period=period3, interval=minute)
+                y3['Returns'] = (y3['Close'] - y3['Open']) / y3['Open']
+                y3["Returns"] = y3['Returns'].fillna(0)
+                count_up2 = 0
+                for r3 in y3['Returns']:
+                    if r3 > 0:
+                        count_up2 = count_up2 + 1
+                freq3 = count_up2 / len(y3['Returns'])
+
+            if freq3 > 0.5:
+                screen1 = screen1 + " " + t
+
+        except:
+            continue
+try:
+    screen1 = screen1[1:]
+except:
+    pass
+
+print(screen1)
+
