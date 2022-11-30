@@ -1,3 +1,9 @@
+# Skynet is a program that takes user input [stock ticker(s)], and outputs an excel spreadsheet with the following information:
+# 1: Price data, Volume Periodic Return, MACD, RSI, A/D Slope.
+# 2: Beta, Price/Book Ratio, Market Cap, Frequency that ticker outperforms market, Frequency that ticker outperforms its industry, Regression prediction for next period.
+# 3: Market's expectation of the stock's future prices (based off a volume-weighted expectation of option contracts for the stock).
+# Skynet will then ask the user to input a path where he/she/they would like the excel sheet saved.
+
 # Imported Packages
 import pandas as pd
 import yfinance as yf
@@ -20,13 +26,12 @@ interval="1d"
 for t in tickers:
     try:
         ask = yf.download(t, period=period, interval=interval)
+        print(t, ": Stock data downloaded")
         ask["Returns"] = (ask["Adj Close"] - ask["Open"]) / ask["Open"]
         prices[t] = ask
     except:
         print(t,": Unable to download stock data")
         continue
-
-    print(t,": Stock data downloaded")
 
 company_name = dict()
 for t in tickers:
@@ -52,13 +57,16 @@ for t in tickers:
 #Creating MACD
 MACD=dict()
 for t in tickers:
-    refer=prices[t]
-    macd=ta.macd(refer['Close'])
-    macd=macd.dropna(axis=0)
-    MACD[t]=macd["MACDh_12_26_9"]
-    prices[t]["MACD"]=MACD[t]
+    try:
+        refer = prices[t]
+        macd = ta.macd(refer['Close'])
+        macd = macd.dropna(axis=0)
+        MACD[t] = macd["MACDh_12_26_9"]
+        prices[t]["MACD"] = MACD[t]
+        print(t, ": MACD Calculated")
+    except:
+        continue
 
-    print(t,": MACD Calculated")
 
 #Beta for input-stocks
 spy=yf.download("SPY",period=period,interval=interval)
@@ -75,6 +83,45 @@ for t in tickers:
         continue
 
     print(t,": Beta downloaded")
+
+#Creating Money-Flow Multiplier:
+for t in tickers:
+    refer=prices[t]
+    CML = refer['Close']-refer['Low']
+    HMC = refer['High']-refer['Close']
+    range = refer['High']-refer['Low']
+    mfm = (CML-HMC)/range
+    prices[t]['MFM']= mfm
+    print(t,": MFM Calculated")
+
+#Volume Percentage change:
+volume_ch=dict()
+for t in tickers:
+    refer=prices[t]
+    volch=refer['Volume'][1:].pct_change()
+    volume_ch[t]=volch
+
+#Accumulation Distribution Line Movement:
+for t in tickers:
+    try:
+        refer = prices[t]
+        AD = ta.ad(refer['High'], refer['Low'], refer['Close'], refer['Volume'])
+        prices[t]['A/D'] = AD
+        print(t, ": A/D Movement Calculated")
+        temp = refer['A/D'][1:]
+        k = 0
+        AD_change = list()
+        for ad in refer['A/D']:
+            try:
+                change = (temp[k] - refer['A/D'][k]) / refer['A/D'][k]
+                AD_change.append(change)
+                k = k + 1
+            except:
+                AD_change.insert(0, " ")
+        prices[t]['A/D Movement'] = AD_change
+        print(t,": A/D Calculated")
+    except:
+        continue
 
 #Market Cap
 mktcap=dict()
@@ -135,33 +182,110 @@ for t in tickers:
     print(t,": Standard Deviation Calculated")
 
 
-#Regression (Autocorrelate+SPY)
+#Regression (Autocorrelate,SPY,RSI,AD Movement,Volume):
 regression_prediction=dict()
 for t in tickers:
-    try:
-        refer = prices[t]
-        current = refer["Returns"]
-        x1 = current
-        x1 = x1.dropna(axis=0)
-        current2 = spy["Returns"]
-        current2 = current2.dropna(axis=0)
-        x2 = current2.drop(index=current2.index[-1])
-        y = x1[1:]
-        x1 = x1.drop(index=x1.index[-1])
-        x = pd.DataFrame([x1, x2], index=['Return', 'SPY Return'])
-        x = x.transpose()
-        y = np.array(y)
+    refer = prices[t]
+    rsi_count = len(refer['RSI'].dropna())
+    y = refer['Returns'].dropna()
+    y = y.drop(index=y.index[:-rsi_count])
+    y = y[1:]
 
-        reg = LR()
-        reg.fit(x.values, y)
-        point = np.array(x.iloc[-1])
-        point = point.reshape(1, -1)
-        pred = reg.predict(point)
-        regression_prediction[t] = pred
-    except:
-        print(t,": Unable to Conduct Regression")
-        regression_prediction[t]="Unable to find relevant data"
-        continue
+    x_list=list()
+    x_names=list()
+    x_items=list()
+
+    x1 = refer["Returns"]
+    x1 = x1.dropna(axis=0)
+    x1 = x1.drop(index=x1.index[:-rsi_count])
+    x1 = x1.drop(index=x1.index[-1])
+    x1_corr = np.corrcoef(x1.astype(float), y)
+    x1_corr = x1_corr[0,1]
+    if x1_corr>=0.2:
+        x_list.append(x1)
+        x_names.append("St-Ret")
+        x_items.append('x1')
+
+    x2 = spy['Returns']
+    x2 = x2.dropna(axis=0)
+    x2 = x2.drop(index=x2.index[:-rsi_count])
+    x2 = x2.drop(index=x2.index[-1])
+    x2_corr = np.corrcoef(x2.astype(float), y)
+    x2_corr = x2_corr[0,1]
+    if x2_corr >= 0.2:
+        x_list.append(x2)
+        x_names.append("SPY-Ret")
+        x_items.append('x2')
+
+    x3 = refer['RSI'].dropna()
+    x3 = x3.drop(index=x3.index[-1])
+    x3_corr = np.corrcoef(x3.astype(float), y)
+    x3_corr = x3_corr[0,1]
+    if x3_corr >= 0.2:
+        x_list.append(x3)
+        x_names.append("St-RSI")
+        x_items.append('x3')
+
+    x4 = refer['A/D Movement'].dropna()
+    x4 = x4.drop(index=x4.index[:-rsi_count])
+    x4 = x4.drop(index=x4.index[-1])
+    x4_corr = np.corrcoef(x4.astype(float), y)
+    x4_corr = x4_corr[0,1]
+    if x4_corr >= 0.2:
+        x_list.append(x4)
+        x_names.append("St-ADMovement")
+        x_items.append('x4')
+
+    x5 = volume_ch[t].dropna()
+    x5 = x5.drop(index=x5.index[:-rsi_count])
+    x5 = x5.drop(index=x5.index[-1])
+    x5_corr = np.corrcoef(x5.astype(float),y)
+    x5_corr = x5_corr[0,1]
+    if x5_corr >= 0.2:
+        x_list.append(x5)
+        x_names.append("Vol_Change")
+        x_items.append('x5')
+
+    if len(x_list)>0:
+        x=pd.DataFrame(x_list,index=[x_names])
+        x = x.transpose()
+
+        reg=LR()
+        reg.fit(x.values,y)
+
+        variables=list()
+
+        c1=refer['Returns'][-1]
+        if 'x1' in x_items:
+            variables.append(c1)
+
+        c2=spy['Returns'][-1]
+        if 'x2' in x_items:
+            variables.append(c2)
+
+        c3=refer['RSI'][-1]
+        if 'x3' in x_items:
+            variables.append(c3)
+
+        c4=refer['A/D Movement'][-1]
+        if 'x4' in x_items:
+            variables.append(c4)
+
+        c5=volume_ch[t][-1]
+        if 'x5' in x_items:
+            variables.append(c5)
+
+        try:
+            point=np.array(variables)
+            num=len(x_list)
+            point = point.reshape(1, num)
+            pred = reg.predict(point)
+            regression_prediction[t]=float(pred)
+        except:
+            regression_prediction[t]="No Correlation Found"
+
+    else:
+        regression_prediction[t]="No Correlation Found"
 
     print(t,": Regression Completed")
 
@@ -321,7 +445,10 @@ for t in prices:
 price_data=price_data.iloc[::-1]
 
 #Excel
-with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/stocksfrompy.xlsx') as writer:
+system_where = input("Please enter a path to your desktop/folder: ")
+system_where =system_where.strip()
+path = system_where+'/skynet.xlsx'
+with pd.ExcelWriter(path) as writer:
     price_data.to_excel(writer, sheet_name='Price Data')
     stats.to_excel(writer,sheet_name='Statistics')
     mkt_expectation.to_excel(writer,sheet_name='Market Expectation of Prices')
