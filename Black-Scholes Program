@@ -1,0 +1,37 @@
+#This program allows the user to price an option by using the Black-Scholes formula. It is coded using R-Programming language
+
+
+s <- 41
+k <- 40
+v <- 0.3
+r <- 0.08
+tt <- 1
+div <- 0.0
+
+
+
+nstep_Low = 1
+nstep_High = 100
+
+nstep_array = seq(nstep_Low,nstep_High, by =1 )
+
+model_price <- vector()
+
+for(i in 1:length(nstep_array)){
+  nstep_val = nstep_array[i]
+  results = binomopt(s, k, v, r, tt, div, nstep_val, american = FALSE,
+                     putopt=FALSE, specifyupdn=FALSE, crr=FALSE, jarrowrudd=FALSE,
+                     up=1.9, dn=0.9, returntrees=TRUE, returnparams=TRUE,
+                     returngreeks=FALSE)
+  model_price[i] = results$price
+  
+}
+
+plot(nstep_array,model_price,type = "l", frame = TRUE, lwd=3,
+     col = "red", xlab = "nstep", ylab = "option price" )
+
+
+tail(model_price, n=1)
+bscall(s, k, v, r, tt, div)
+
+greeks(bscall(s, k, v, r, tt, div))
