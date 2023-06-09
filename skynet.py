@@ -186,94 +186,116 @@ for t in tickers:
 regression_prediction=dict()
 for t in tickers:
     refer = prices[t]
-    rsi_count = len(refer['RSI'].dropna())
-    y = refer['Returns'].dropna()
-    y = y.drop(index=y.index[:-rsi_count])
-    y = y[1:]
+    try:
+        rsi_count = len(refer['RSI'].dropna())
+        y = refer['Returns'].dropna()
+        y = y.drop(index=y.index[:-rsi_count])
+        y = y[1:]
+    except:
+        continue
 
     x_list=list()
     x_names=list()
     x_items=list()
 
-    x1 = refer["Returns"]
-    x1 = x1.dropna(axis=0)
-    x1 = x1.drop(index=x1.index[:-rsi_count])
-    x1 = x1.drop(index=x1.index[-1])
-    x1_corr = np.corrcoef(x1.astype(float), y)
-    x1_corr = x1_corr[0,1]
-    if x1_corr>=0.2:
-        x_list.append(x1)
-        x_names.append("St-Ret")
-        x_items.append('x1')
+    try:
+        x1 = refer["Returns"]
+        x1 = x1.dropna(axis=0)
+        x1 = x1.drop(index=x1.index[:-rsi_count])
+        x1 = x1.drop(index=x1.index[-1])
+        x1_corr = np.corrcoef(x1.astype(float), y)
+        x1_corr = x1_corr[0,1]
+        if x1_corr>=0.2:
+            x_list.append(x1)
+            x_names.append("St-Ret")
+            x_items.append('x1')
+    except:
+        pass
 
-    x2 = spy['Returns']
-    x2 = x2.dropna(axis=0)
-    x2 = x2.drop(index=x2.index[:-rsi_count])
-    x2 = x2.drop(index=x2.index[-1])
-    x2_corr = np.corrcoef(x2.astype(float), y)
-    x2_corr = x2_corr[0,1]
-    if x2_corr >= 0.2:
-        x_list.append(x2)
-        x_names.append("SPY-Ret")
-        x_items.append('x2')
+    try:
+        x2 = spy['Returns']
+        x2 = x2.dropna(axis=0)
+        x2 = x2.drop(index=x2.index[:-rsi_count])
+        x2 = x2.drop(index=x2.index[-1])
+        x2_corr = np.corrcoef(x2.astype(float), y)
+        x2_corr = x2_corr[0,1]
+        if x2_corr >= 0.2:
+            x_list.append(x2)
+            x_names.append("SPY-Ret")
+            x_items.append('x2')
+    except:
+        pass
 
-    x3 = refer['RSI'].dropna()
-    x3 = x3.drop(index=x3.index[-1])
-    x3_corr = np.corrcoef(x3.astype(float), y)
-    x3_corr = x3_corr[0,1]
-    if x3_corr >= 0.2:
-        x_list.append(x3)
-        x_names.append("St-RSI")
-        x_items.append('x3')
+    try:
+        x3 = refer['RSI'].dropna()
+        x3 = x3.drop(index=x3.index[-1])
+        x3_corr = np.corrcoef(x3.astype(float), y)
+        x3_corr = x3_corr[0,1]
+        if x3_corr >= 0.2:
+            x_list.append(x3)
+            x_names.append("St-RSI")
+            x_items.append('x3')
+    except:
+        pass
 
-    x4 = refer['A/D Movement'].dropna()
-    x4 = x4.drop(index=x4.index[:-rsi_count])
-    x4 = x4.drop(index=x4.index[-1])
-    x4_corr = np.corrcoef(x4.astype(float), y)
-    x4_corr = x4_corr[0,1]
-    if x4_corr >= 0.2:
-        x_list.append(x4)
-        x_names.append("St-ADMovement")
-        x_items.append('x4')
+    try:
+        x4 = refer['A/D Movement'].dropna()
+        x4 = x4.drop(index=x4.index[:-rsi_count])
+        x4 = x4.drop(index=x4.index[-1])
+        x4_corr = np.corrcoef(x4.astype(float), y)
+        x4_corr = x4_corr[0,1]
+        if x4_corr >= 0.2:
+            x_list.append(x4)
+            x_names.append("St-ADMovement")
+            x_items.append('x4')
+    except:
+        pass
 
-    x5 = volume_ch[t].dropna()
-    x5 = x5.drop(index=x5.index[:-rsi_count])
-    x5 = x5.drop(index=x5.index[-1])
-    x5_corr = np.corrcoef(x5.astype(float),y)
-    x5_corr = x5_corr[0,1]
-    if x5_corr >= 0.2:
-        x_list.append(x5)
-        x_names.append("Vol_Change")
-        x_items.append('x5')
+    try:
+        x5 = volume_ch[t].dropna()
+        x5 = x5.drop(index=x5.index[:-rsi_count])
+        x5 = x5.drop(index=x5.index[-1])
+        x5_corr = np.corrcoef(x5.astype(float),y)
+        x5_corr = x5_corr[0,1]
+        if x5_corr >= 0.2:
+            x_list.append(x5)
+            x_names.append("Vol_Change")
+            x_items.append('x5')
+    except:
+        pass
 
-    if len(x_list)>0:
-        x=pd.DataFrame(x_list,index=[x_names])
-        x = x.transpose()
+    try:
 
-        reg=LR()
-        reg.fit(x.values,y)
+        if len(x_list)>0:
+            x=pd.DataFrame(x_list,index=[x_names])
+            x = x.transpose()
 
-        variables=list()
+            reg=LR()
+            reg.fit(x.values,y)
 
-        c1=refer['Returns'][-1]
-        if 'x1' in x_items:
-            variables.append(c1)
+            variables=list()
 
-        c2=spy['Returns'][-1]
-        if 'x2' in x_items:
-            variables.append(c2)
+            c1=refer['Returns'][-1]
+            if 'x1' in x_items:
+                variables.append(c1)
 
-        c3=refer['RSI'][-1]
-        if 'x3' in x_items:
-            variables.append(c3)
+            c2=spy['Returns'][-1]
+            if 'x2' in x_items:
+                variables.append(c2)
 
-        c4=refer['A/D Movement'][-1]
-        if 'x4' in x_items:
-            variables.append(c4)
+            c3=refer['RSI'][-1]
+            if 'x3' in x_items:
+                variables.append(c3)
 
-        c5=volume_ch[t][-1]
-        if 'x5' in x_items:
-            variables.append(c5)
+            c4=refer['A/D Movement'][-1]
+            if 'x4' in x_items:
+                variables.append(c4)
+
+            c5=volume_ch[t][-1]
+            if 'x5' in x_items:
+                variables.append(c5)
+    except:
+        pass
 
         try:
             point=np.array(variables)
@@ -445,10 +467,7 @@ for t in prices:
 price_data=price_data.iloc[::-1]
 
 #Excel
-system_where = input("Please enter a path to your desktop/folder: ")
-system_where =system_where.strip()
-path = system_where+'/skynet.xlsx'
-with pd.ExcelWriter(path) as writer:
+with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/stocksfrompy.xlsx') as writer:
     price_data.to_excel(writer, sheet_name='Price Data')
     stats.to_excel(writer,sheet_name='Statistics')
     mkt_expectation.to_excel(writer,sheet_name='Market Expectation of Prices')
