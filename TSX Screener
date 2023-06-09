@@ -1,0 +1,49 @@
+import pandas as pd
+import numpy as np
+import yfinance as yf
+
+symbols = list()
+permutations = ['0-9','A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+for t in permutations:
+    url = 'https://en.wikipedia.org/wiki/Companies_listed_on_the_Toronto_Stock_Exchange_'+'('+t+')'
+    table = pd.read_html(url)
+    table = table[1]
+    for x in table.iloc[:,1]:
+        if "." in str(x):
+            x = x.replace('.','-')
+        x = str(x) + '.' + 'TO'
+        symbols.append(x)
+    print("Done with ",t)
+
+screen = list()
+industry = dict()
+for r in symbols:
+    try:
+        now = yf.download(r, period='3d', interval='1m')
+        now['Return'] = (now['Close'] - now['Open']) / now['Open']
+        count = 0
+        total = len(now['Return'])
+        for x in now['Return']:
+            if x > 0:
+                count = count + 1
+        ratio = count / total
+        industry[r] = ratio
+    except:
+        continue
+
+ratios = list(industry.values())
+ratios = np.array(ratios)
+mu = np.mean(ratios)
+std = np.std(ratios)
+
+spec = list(industry.keys())
+threshold = mu + 1.5*std
+for s in spec:
+    if industry[s] >= threshold:
+        screen.append(s)
+
+y = " "
+for x in screen:
+    refer = x + " "
+    y = y + refer
+print(y)
