@@ -16,37 +16,38 @@ import numpy as np
 stocks = input("Type Stocks Here: ")
 capit = stocks.upper()
 tickers = capit.split()
-period = '2y'
-interval = '1d'
+period = '7d'
+interval = '1h'
 tpv = input("Input Total Portfolio Value: ")
 tpv = float(tpv)
 
+#User Preference:
+command1 = input("Type 'R' to set specific return, 'S' to set specific risk, or type 'A' to automate: ")
+command1 = command1.upper()
+
 #Getting Returns for each ticker:
-close = dict()
+close1 = pd.DataFrame()
 for t in tickers:
     try:
         refer = yf.download(t,period=period,interval=interval)
-        close[t] = refer['Close']
+        refer['Returns'] = (refer['Close']-refer['Open'])/refer['Open']
+        avg_ret = np.mean(refer['Returns'])
+        if avg_ret > 0:
+            close1[t] = refer['Close']
     except:
         continue
 
-close1 = pd.DataFrame.from_dict(close,orient='index')
 close1 = close1.dropna(axis=0)
-close1 = close1.transpose()
 
 #Scraping Risk Free Rate:
 url = 'https://ycharts.com/indicators/1_year_treasury_rate'
 user = FakeUserAgent()
 rand = user.chrome
-r=requests.get(url,headers={'User-Agent':rand})
+r=requests.get(url,headers={'User-Agent': rand})
 table=pd.read_html(r.text)
 rf=table[3][1][0]
 rf=float(rf[:-1])
 rf=rf/100
-
-#User Preference:
-command1 = input("Type 'R' to set specific return, 'S' to set specific risk, or type 'A' to automate: ")
-command1 = command1.upper()
 
 #If User chooses to control for RETURN:
 if command1 == 'R':
@@ -69,9 +70,10 @@ if command1 == 'R':
 
         # Creating Portfolio Skeleton:
         try:
-            es = EfficientSemivariance(R, HR)
+            es = EfficientSemivariance(R, HR, weight_bounds=(0,0.3))
             es.efficient_return(target)
             weights = es.clean_weights()
+
         except:
             print(" ")
             print("[Please try another return. The problem might be that your return is unrealistic]")
@@ -96,10 +98,7 @@ if command1 == 'R':
         print("Leftover Funds: ", leftover)
 
         # To Excel:
-        system_where = input("Enter Pathway to desktop/folder: ")
-        system_where = system_where.strip()
-        path = system_where + '/Portfolio_Structure(Return).xlsx'
-        with pd.ExcelWriter(path) as writer:
+        with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/Portfolio_Structure(Return).xlsx') as writer:
             w_df.to_excel(writer, sheet_name="Portfolio Structure")
 
 
@@ -154,10 +153,7 @@ elif command1 == "S":
         print("Leftover Funds: ", leftover)
 
         # To Excel:
-        system_where = input("Enter Pathway to desktop/folder: ")
-        system_where = system_where.strip()
-        path = system_where + '/Portfolio_Structure(Risk).xlsx'
-        with pd.ExcelWriter(path) as writer:
+        with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/Portfolio_Structure(Risk).xlsx') as writer:
             w_df.to_excel(writer, sheet_name="Portfolio Structure")
 
 
@@ -175,8 +171,8 @@ elif command1 == 'A':
     es = EfficientSemivariance(R, HR)
 
     #Finding Return Value for Portfolio with Highest Sortino Value:
-    best = 0
-    val = 0
+    best = 0.000000000001
+    val = 0.000000000001
     for r in ra:
         try:
             target = r
@@ -185,12 +181,14 @@ elif command1 == 'A':
             perf = es.portfolio_performance(risk_free_rate=rf)
             sortino = perf[2]
             if sortino > best:
-                best = sortino
-                val = r
+                if r > 0:
+                    if sortino <= 5:
+                        best = sortino
+                        val = float(r)
         except:
             continue
 
-#Using best value to create portfolio:
+    #Using best value to create portfolio:
     es.efficient_return(val)
     weights = es.clean_weights()
     es.portfolio_performance(verbose=True,risk_free_rate=rf)
@@ -213,8 +211,5 @@ elif command1 == 'A':
     print("Leftover Funds: ", leftover)
 
     # To Excel:
-    system_where = input("Enter Pathway to desktop/folder: ")
-    system_where = system_where.strip()
-    path = system_where+'/Portfolio_Structure(Auto).xlsx'
-    with pd.ExcelWriter(path) as writer:
+    with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/Portfolio_Structure(Auto).xlsx') as writer:
         w_df.to_excel(writer, sheet_name="Portfolio Structure")
