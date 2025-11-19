@@ -1,4 +1,4 @@
-# Skynet is a program that takes user input [stock ticker(s)], and outputs an excel spreadsheet with the following information:
+# Skynet is a program that takes user inpust [stock ticker(s)], and outputs an excel spreadsheet with the following information:
 # 1: Price data, Volume Periodic Return, MACD, RSI, A/D Slope.
 # 2: Beta, Price/Book Ratio, Market Cap, Frequency that ticker outperforms market, Frequency that ticker outperforms its industry, Regression prediction for next period.
 # 3: Market's expectation of the stock's future prices (based off a volume-weighted expectation of option contracts for the stock).
@@ -9,11 +9,13 @@ import pandas as pd
 import yfinance as yf
 import numpy as np
 import pandas_ta as ta
+from scipy.stats import norm
 from sklearn.linear_model import LinearRegression as LR
 from bs4 import BeautifulSoup as bs
-from fake_useragent import FakeUserAgent
+from fake_useragent import UserAgent
+import warnings
 import requests
-
+warnings.filterwarnings('ignore')
 
 # Using user input to fetch price data + Daily t_returns
 stock=input("Stock Ticker: ")
@@ -27,7 +29,10 @@ for t in tickers:
     try:
         ask = yf.download(t, period=period, interval=interval)
         print(t, ": Stock data downloaded")
-        ask["Returns"] = (ask["Adj Close"] - ask["Open"]) / ask["Open"]
+        ask["Returns"] = (ask["Close"] - ask["Open"]) / ask["Open"]
+        ask['p-value'] = norm.cdf(ask['Returns']-np.mean(ask['Returns']),
+                                  loc=np.mean(ask['Returns']),
+                                  scale=np.std(ask['Returns']))
         prices[t] = ask
     except:
         print(t,": Unable to download stock data")
@@ -37,9 +42,8 @@ company_name = dict()
 for t in tickers:
     try:
         url = 'https://finance.yahoo.com/quote/' + t + '?p=' + t + '&.tsrc=fin-srch'
-        agent = FakeUserAgent()
-        rand = agent.chrome
-        r = requests.get(url, headers={'User-Agent': rand})
+        agent = UserAgent()
+        r = requests.get(url, headers={'User-Agent': agent.random})
         soup = bs(r.text, 'html.parser')
         body = soup.find_all('body')
         for rows in body:
@@ -70,7 +74,7 @@ for t in tickers:
 
 #Beta for input-stocks
 spy=yf.download("SPY",period=period,interval=interval)
-spy["Returns"]=(spy["Adj Close"]-spy["Open"])/spy["Open"]
+spy["Returns"]=(spy["Close"]-spy["Open"])/spy["Open"]
 beta=dict()
 for t in tickers:
     try:
@@ -316,34 +320,39 @@ price_expectation=dict()
 for t in tickers:
     try:
         price_exp_by_date = dict()
+        refer = prices[t]
+        price_exp_by_date['CURRENT'] = refer['Close'].iloc[-1]
         url = 'https://finance.yahoo.com/quote/' + t + '/options?p=' + t
-        user = FakeUserAgent()
-        rand1 = user.random
+        user = UserAgent()
         date_list = list()
         date_dict = dict()
-        r = requests.get(url, headers={'User-Agent': rand1})
+        r = requests.get(url, headers={'User-Agent': user.random})
         soup = bs(r.text, 'html.parser')
         body = soup.find_all('body')
         for row in body:
-            divs = row.find_all('div', class_='Fl(start) Pend(18px)')
+            divs = row.find_all('div', class_="dialog-content tw-top-10 svelte-dq7w77")
             for div in divs:
-                select = div.find('select')
+                select = div.find_all('div', class_='itm svelte-qe79qs')
                 for sel in select:
-                    date_list.append(sel['value'])
-                    date_dict[sel['value']] = sel.string
+                    if sel.has_attr('data-value') and len(sel['data-value']) == 10:
+                        date_list.append(sel['data-value'])
+                        date_dict[sel['data-value']] = sel.get_text(strip=True)
 
         for date in date_list:
             url1 = 'https://finance.yahoo.com/quote/' + t + '/options?p=' + t + '&date=' + date
-            rand2 = user.chrome
-            r = requests.get(url1, headers={'User-Agent': rand2})
-            opt = pd.read_html(r.text)
-            callopt = opt[0]
-            putopt = opt[1]
+            r = requests.get(url1, headers={'User-Agent': user.random})
+            try:
+                opt = pd.read_html(r.text)
+                callopt = opt[0]
+                putopt = opt[1]
+            except:
+                continue
 
             for x in callopt['Volume']:
                 callopt['Volume'] = callopt['Volume'].replace('-', '0')
                 callopt["Strike"] = callopt['Strike'].replace('-', '0')
                 callopt['Ask'] = callopt['Ask'].replace('-', '0')
+            callopt = callopt[callopt['Volume']!="There are no calls."]
             callopt['Volume'] = callopt["Volume"].astype(int)
             callopt['Strike'] = callopt['Strike'].astype(float)
             callopt['Ask'] = callopt["Ask"].astype(float)
@@ -351,6 +360,7 @@ for t in tickers:
                 putopt["Volume"] = putopt["Volume"].replace('-', '0')
                 putopt['Strike'] = putopt['Strike'].replace('-', '0')
                 putopt['Ask'] = putopt['Ask'].replace('-', '0')
+            putopt = putopt[putopt['Volume']!="There are no puts."]
             putopt["Volume"] = putopt['Volume'].astype(int)
             putopt['Strike'] = putopt['Strike'].astype(float)
             putopt['Ask'] = putopt['Ask'].astype(float)
@@ -392,7 +402,10 @@ for t in tickers:
     for day in df["performance"]:
         if day>0:
             count=count+1
-    outperform_mkt[t]= count / len(t_returns)
+    try:
+        outperform_mkt[t]= count / len(t_returns)
+    except:
+        continue
 
     print(t,": Market-Outperforming Ratio Calculcated")
 
@@ -431,7 +444,7 @@ for t in tickers:
                 etf = ETFS[ind]
                 security = prices[t]
                 current = yf.download(etf, period=period, interval=interval)
-                current["Returns"] = (current['Adj Close'] - current['Open']) / current['Open']
+                current["Returns"] = (current['Close'] - current['Open']) / current['Open']
                 df = pd.DataFrame([security['Returns'], current["Returns"]], index=['Stock', 'Industry'])
                 df = df.transpose()
                 count = 0
@@ -445,9 +458,28 @@ for t in tickers:
         print(t,": Unable to compare returns to industry returns")
         outperform_ind[t]='Sector not found'
 
+total_growth = dict()
+for t in tickers:
+    try:
+        refer = prices[t]
+        first = refer['Close'].iloc[0]
+        last = refer['Close'].iloc[-1]
+        total_growth[t] = (last/first)-1
+    except:
+        continue
+
+positive_freq = dict()
+for t in tickers:
+    try:
+        refer = prices[t]
+        positive_freq[t] = len(refer[refer['Returns']>0]['Returns'])/len(refer['Returns'])
+    except:
+        continue
 
 #Information Data
 stats=pd.DataFrame(index=tickers)
+stats[f"{period} Growth"] = stats.from_dict(total_growth,orient='index')
+stats[f"{period} Upside Frequency"] = stats.from_dict(positive_freq,orient='index')
 stats["Beta"]=stats.from_dict(beta,orient='index')
 stats["MktCap"]=stats.from_dict(mktcap,orient='index')
 stats["Price/Book"]=stats.from_dict(pb,orient='index')
@@ -467,12 +499,7 @@ for t in prices:
 price_data=price_data.iloc[::-1]
 
 #Excel
-with pd.ExcelWriter('/Users/rohanbanerjea/Desktop/Stocks/stocksfrompy.xlsx') as writer:
+with pd.ExcelWriter(f"/Users/rohanbanerjea/Desktop/Stocks/stocksfrompy ({stock}).xlsx") as writer:
     price_data.to_excel(writer, sheet_name='Price Data')
     stats.to_excel(writer,sheet_name='Statistics')
     mkt_expectation.to_excel(writer,sheet_name='Market Expectation of Prices')
-
-
-
-
-
